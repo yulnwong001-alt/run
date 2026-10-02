@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>联机交替按键赛跑</title>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<style>
+*{box-sizing:border-box;font-family:system-ui;margin:0;padding:0}
+body{background:#f0f8ff;padding:20px}
+.container{max-width:900px;margin:0 auto;background:#fff;padding:24px;border-radius:16px;box-shadow:0 4px 10px #0002}
+h1{text-align:center;margin-bottom:16px;color:#222}
+.room-bar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
+input{padding:8px 12px;border:1px solid #aaa;border-radius:6px;font-size:16px}
+button{padding:8px 14px;border:none;border-radius:6px;background:#2385ff;color:#fff;cursor:pointer;font-size:16px}
+button:disabled{background:#999;cursor:not-allowed}
+.tip-box{text-align:center;font-size:18px;margin:16px 0;font-weight:bold;min-height:24px}
+.race-track{width:100%;height:340px;background:#e9e9e9;border-radius:12px;position:relative;overflow:hidden;border:2px solid #666}
+.finish{position:absolute;right:0;width:12px;height:100%;background:#ff4444}
+.player{position:absolute;top:0;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;transition:left 0.08s}
+.stun{background:#666 !important}
+.winner{box-shadow:0 0 12px gold}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🏃 交替按键赛跑（按1左脚，2右脚）</h1>
+  <div class="room-bar">
+    <input id="roomInput" placeholder="房间号" value="8888">
+    <input id="nameInput" placeholder="你的名字" value="玩家">
+    <button onclick="joinRoom()">加入房间</button>
+    <button onclick="resetRace()">重置比赛</button>
+  </div>
+  <div class="tip-box" id="tip">请先输入房间号和名字，加入房间</div>
+  <div class="race-track" id="track">
+    <div class="finish"></div>
+  </div>
+</div>
+
+<script>
+let socket = io();
+let roomId = "";
+const trackEl = document.getElementById('track');
+const tipEl = document.getElementById('tip');
+const finishLinePercent = 92;
+
+document.addEventListener('keydown', e=>{
+  if (!roomId) return;
+  const key = e.key;
+  if(key === '1' || key === '2'){
+    socket.emit('keyPress', roomId, key);
+  }
+})
+
+function joinRoom(){
+  roomId = document.getElementById('roomInput').value.trim();
+  const name = document.getElementById('nameInput').value.trim() || "匿名";
+  socket.emit('joinRoom', roomId, name);
+  tipEl.innerText = `✅ 已进入房间 ${roomId}，按1、2开始跑！不要连续按相同按键！`;
+}
+function resetRace(){
+  if(roomId) socket.emit('resetRace', roomId);
+}
+
+// 接收房间状态，渲染所有玩家
+socket.on('roomState', (players)=>{
+  trackEl.querySelectorAll('.player').forEach(el=>el.remove());
+  for(const pid in players){
+    const p = players[pid];
+    const div = document.createElement('div');
+    div.className = 'player';
+    if(p.isStun) div.classList.add('stun');
+    if(p.win) div.classList.add('winner');
+    div.innerText = p.name.slice(0,2);
+    // 位置映射：0~100 => 赛道百分比
+    const posPercent = Math.min(p.pos / 100 * finishLinePercent, finishLinePercent);
+    div.style.left = posPercent + '%';
+    // 垂直错开，防止人物重叠
+    div.style.top = (Object.keys(players).indexOf(pid) * 60 + 10) + 'px';
+    // 眩晕文字提示
+    if(p.isStun) div.title = "摔倒眩晕中！";
+    trackEl.appendChild(div);
+
+    if(p.win){
+      tipEl.innerText = `🎉 ${p.name} 率先到达终点，获得胜利！`;
+    }else if(p.isStun){
+      tipEl.innerText = `💥 ${p.name}摔倒了，1秒不能移动！`;
+    }
+  }
+})
+</script>
+</body>
+</html>
